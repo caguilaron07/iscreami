@@ -1,4 +1,4 @@
-# iscreami — Copilot Instructions
+# iscreami — Agent Instructions
 
 Open-source ice cream recipe calculator. FastAPI backend + React/TypeScript frontend, single Docker container, PostgreSQL database.
 
@@ -61,24 +61,22 @@ frontend/
 - Never alter `alembic/versions/` files that have already been applied in production
 - Seed data: `uv run python -m cli.main seed`
 
-## After Every Edit
+## Linting & Type Checking
 
-After making any code change, check the editor's Problems panel (errors and warnings) for the modified files and fix all issues before finishing. This applies to both Python files (type errors, unused imports, ruff warnings) and TypeScript/TSX files (type errors, missing props, unused variables).
-
-## Build & Test
+After any code change, ensure the modified files pass linting and type checks before finishing:
 
 ```bash
 # Backend
 cd backend
-uv sync                   # Install deps
-uv run pytest tests/ -v   # Tests
-uv run ruff check .       # Lint
+uv sync                          # Install deps
+uv run ruff check .              # Lint Python
+uv run pytest tests/ -v          # Run tests
 
 # Frontend
 cd frontend
 npm install
-npx tsc --noEmit          # Type check
-npm run build             # Production build
+npx tsc --noEmit                 # Type check
+npm run build                    # Production build
 ```
 
 ## Key Science — PAC & POD
@@ -98,6 +96,6 @@ When adding new solute types, update both `PAC_FACTORS` in `services/pac.py` **a
 ## Environment
 
 - `.env` file in repo root; loaded by `load_dotenv()` in `app.py` and `cli/main.py`
-- Required: `DATABASE_URL=postgresql://user:pass@host:5432/iscreami`
+- Required: `DATABASE_URL=postgresql://user:***@host:5432/iscreami`
 - Optional: `CORS_ORIGINS` (comma-separated), `SERVING_SIZE_G` (default 66)
 - **Critical**: `load_dotenv()` must be called before any import that reads `os.environ` (e.g. `db.py` reads `DATABASE_URL` at import time)

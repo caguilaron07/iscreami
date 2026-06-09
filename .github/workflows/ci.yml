@@ -7,24 +7,32 @@ on:
   pull_request:
     branches: [main, master]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
   backend:
     name: Backend — lint & test
     runs-on: ubuntu-latest
     env:
       DATABASE_URL: postgresql+psycopg://postgres:postgres@localhost:5432/iscreami
-    permissions:
-      contents: read
     defaults:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
 
       - name: Set up uv
-        uses: astral-sh/setup-uv@v8.1.0
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
         with:
-          enable-cache: true
+          enable-cache: ${{ !startsWith(github.ref, 'refs/tags/') }}
           cache-dependency-glob: backend/uv.lock
 
       - name: Install dependencies
@@ -39,36 +47,26 @@ jobs:
   frontend:
     name: Frontend — type check, lint & build
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     defaults:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
 
-      - name: Set up Node
-        uses: actions/setup-node@v6.4.0
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
         with:
           node-version: "24"
+          cache: ""
+          package-manager-cache: false
 
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v6.0.8
+      - name: Install pnpm
+        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
         with:
-          version: latest
-
-      - name: Get pnpm store directory
-        id: pnpm-cache
-        shell: bash
-        run: echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_OUTPUT
-
-      - name: Setup pnpm cache
-        uses: actions/cache@v5
-        with:
-          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
-          restore-keys: |
-            ${{ runner.os }}-pnpm-store-
+          version: "10"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -83,50 +81,72 @@ jobs:
         run: pnpm build
 
   docker:
-    name: Docker — build & push to GHCR
+    name: Docker — build & push
     needs: [backend, frontend]
     runs-on: ubuntu-latest
-    # Only publish on pushes (not PRs)
-    if: github.event_name == 'push'
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v')
     permissions:
+      attestations: write
+      id-token: write
       contents: read
       packages: write
     steps:
-      - uses: actions/checkout@v6
-
-      - name: Log in to GHCR
-        uses: docker/login-action@v4.1.0
+      - name: Checkout repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
-          registry: ghcr.io
+          persist-credentials: false
+
+      - name: Determine container registry
+        env:
+          REGISTRY_OVERRIDE: ${{ secrets.REGISTRY }}
+        run: |
+          if [ -n "$REGISTRY_OVERRIDE" ]; then
+            echo "REGISTRY=$REGISTRY_OVERRIDE" >> "$GITHUB_ENV"
+          elif [ "$GITHUB_SERVER_URL" = "https://github.com" ]; then
+            echo "REGISTRY=ghcr.io" >> "$GITHUB_ENV"
+          else
+            echo "REGISTRY=${GITHUB_SERVER_URL#https://}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+
+      - name: Log in to container registry
+        env:
+          REGISTRY_PASSWORD: ${{ secrets.PAT || secrets.GITHUB_TOKEN }}
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        with:
+          registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+          password: ${{ env.REGISTRY_PASSWORD }}
 
       - name: Extract image metadata
         id: meta
-        uses: docker/metadata-action@v6
+        uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9 # v6.1.0
         with:
-          images: ghcr.io/${{ github.repository }}
+          images: ${{ env.REGISTRY }}/${{ github.repository }}
           tags: |
-            # Branch name (e.g. main)
             type=ref,event=branch
-            # Full semver from tag (e.g. v1.2.3 → 1.2.3)
             type=semver,pattern={{version}}
-            # Major.minor from tag (e.g. v1.2.3 → 1.2)
             type=semver,pattern={{major}}.{{minor}}
-            # Short commit SHA (e.g. sha-abc1234)
             type=sha,prefix=sha-
-            # latest — only on pushes to the default branch
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Build and push
-        uses: docker/build-push-action@v7.1.0
+      - name: Build and push Docker image
+        id: build-image
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
         with:
           context: .
-          push: true
+          push: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || startsWith(github.ref, 'refs/tags/v') }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository }}:buildcache
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ github.repository }}:buildcache,mode=max
+
+      - name: Generate build provenance attestation
+        if: github.server_url == 'https://github.com'
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32 # v4.1.0
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ github.repository }}
+          subject-digest: ${{ steps.build-image.outputs.digest }}
+          push-to-registry: true
