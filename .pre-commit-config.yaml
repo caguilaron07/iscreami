@@ -3,14 +3,14 @@ repos:
   hooks:
   - id: frontend-type-check
     name: Frontend TypeScript type check
-    entry: bash -c 'cd frontend && pnpm tsc --noEmit'
+    entry: bash -c 'cd frontend && pnpm i && pnpm tsc --noEmit'
     language: system
     stages: [pre-commit]
     pass_filenames: false
     always_run: true
   - id: frontend-lint
     name: Frontend ESLint
-    entry: bash -c 'cd frontend && pnpm lint'
+    entry: bash -c 'cd frontend && pnpm i && pnpm lint'
     language: system
     stages: [pre-commit]
     pass_filenames: false
@@ -29,3 +29,8 @@ repos:
     stages: [pre-commit]
     pass_filenames: false
     always_run: true
+- repo: https://github.com/zizmorcore/zizmor-pre-commit
+  rev: v1.25.2
+  hooks:
+  - id: zizmor
+
