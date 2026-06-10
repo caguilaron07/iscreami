@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Upload, X, AlertCircle, CheckCircle, Loader } from "lucide-react";
 
 interface Props {
@@ -25,6 +25,21 @@ export function FileUploadModal({
   const [isDragActive, setIsDragActive] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [internalError, setInternalError] = useState<string | null>(null);
+
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!open) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape" && !isLoading) onCloseRef.current();
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [open, isLoading]);
 
   if (!open) return null;
 
@@ -97,8 +112,17 @@ export function FileUploadModal({
   const displaySuccessCount = successCount > 0;
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-      <div className="bg-base-100 rounded-lg shadow-lg max-w-md w-full mx-4">
+    <div
+      className="fixed inset-0 bg-black/50 flex items-center justify-center z-50"
+      onClick={() => { if (!isLoading) onClose(); }}
+      role="dialog"
+      aria-modal="true"
+      aria-label={title}
+    >
+      <div
+        className="bg-base-100 rounded-lg shadow-lg max-w-md w-full mx-4"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-base-200">
           <h2 className="text-lg font-semibold text-base-content">{title}</h2>
