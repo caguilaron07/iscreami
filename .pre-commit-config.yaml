@@ -3,14 +3,14 @@ repos:
   hooks:
   - id: frontend-type-check
     name: Frontend TypeScript type check
-    entry: bash -c 'cd frontend && pnpm i && pnpm tsc --noEmit'
+    entry: bash -c 'cd frontend && CI=true pnpm i && pnpm tsc --noEmit'
     language: system
     stages: [pre-commit]
     pass_filenames: false
     always_run: true
   - id: frontend-lint
     name: Frontend ESLint
-    entry: bash -c 'cd frontend && pnpm i && pnpm lint'
+    entry: bash -c 'cd frontend && CI=true pnpm i && pnpm lint'
     language: system
     stages: [pre-commit]
     pass_filenames: false
@@ -39,7 +39,7 @@ repos:
   - id: check-merge-conflict
   - id: check-yaml
   - id: check-json
-    exclude: ^(\.vscode/|tsconfig)
+    exclude: ^\.vscode/
   - id: trailing-whitespace
     exclude: (frontend/node_modules)
   - id: end-of-file-fixer
