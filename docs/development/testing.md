@@ -149,7 +149,7 @@ Create real `Recipe` ORM objects with ingredients.
 def test_with_recipe(test_db, db_recipe_factory, db_ingredient_factory):
     ing1 = db_ingredient_factory(name="Sugar")
     ing2 = db_ingredient_factory(name="Water")
-    
+
     recipe = db_recipe_factory(
         name="Test Recipe",
         ingredients=[
@@ -198,7 +198,7 @@ def test_with_profile(profile):
    ```python
    # Good
    def test_sodium_mg_added_to_pac_calculation
-   
+
    # Bad
    def test_pac
    ```
@@ -210,10 +210,10 @@ def test_with_profile(profile):
    def test_something(ingredient):
        # Arrange
        mock_ing = ingredient(water_pct=10)
-       
+
        # Act
        result = some_function(mock_ing)
-       
+
        # Assert
        assert result == expected
    ```
@@ -223,7 +223,7 @@ def test_with_profile(profile):
    # Bad: repeated across tests
    recipe = Recipe(name="Test", ...)
    db.add(recipe)
-   
+
    # Good: use factory
    recipe = db_recipe_factory(name="Test")
    ```
