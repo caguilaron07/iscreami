@@ -35,7 +35,10 @@ def _load_recipe(db, recipe_id: uuid.UUID) -> Recipe:
     stmt = (
         select(Recipe)
         .where(Recipe.id == recipe_id)
-        .options(joinedload(Recipe.ingredients).joinedload(RecipeIngredient.ingredient))
+        .options(
+            joinedload(Recipe.target_profile),
+            joinedload(Recipe.ingredients).joinedload(RecipeIngredient.ingredient),
+        )
     )
     recipe = db.scalars(stmt).unique().first()
     if not recipe:
@@ -71,7 +74,10 @@ def list_recipes(
 
     stmt = (
         select(Recipe)
-        .options(joinedload(Recipe.ingredients).joinedload(RecipeIngredient.ingredient))
+        .options(
+            joinedload(Recipe.target_profile),
+            joinedload(Recipe.ingredients).joinedload(RecipeIngredient.ingredient),
+        )
         .order_by(Recipe.updated_at.desc())
         .offset(offset)
         .limit(limit)
@@ -84,7 +90,8 @@ def list_recipes(
 def export_all_recipes(db: DbSession):
     """Export all recipes as a JSON array with underscore keys."""
     stmt = select(Recipe).options(
-        joinedload(Recipe.ingredients).joinedload(RecipeIngredient.ingredient)
+        joinedload(Recipe.target_profile),
+        joinedload(Recipe.ingredients).joinedload(RecipeIngredient.ingredient),
     )
     recipes = list(db.scalars(stmt).unique().all())
     return [build_export_single(recipe) for recipe in recipes]
