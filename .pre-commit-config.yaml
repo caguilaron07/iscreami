@@ -33,4 +33,26 @@ repos:
   rev: v1.25.2
   hooks:
   - id: zizmor
-
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  rev: v6.0.0
+  hooks:
+  - id: check-merge-conflict
+  - id: check-yaml
+  - id: check-json
+    exclude: ^(\.vscode/|tsconfig)
+  - id: trailing-whitespace
+    exclude: (frontend/node_modules)
+  - id: end-of-file-fixer
+    exclude: (frontend/node_modules)
+  - id: detect-private-key
+  - id: check-added-large-files
+  - id: debug-statements
+- repo: local
+  hooks:
+  - id: backend-mypy
+    name: Backend mypy type check
+    entry: bash -c 'cd backend && uv run mypy .'
+    language: system
+    types: [python]
+    pass_filenames: false
+    always_run: true
