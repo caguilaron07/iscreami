@@ -8,7 +8,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, File, HTTPException, Query, UploadFile
 from sqlalchemy import func, select
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 
 from api.db import NOT_FOUND_RESPONSE, DbSession
 from api.models import Recipe, RecipeIngredient
@@ -76,7 +76,7 @@ def list_recipes(
         select(Recipe)
         .options(
             joinedload(Recipe.target_profile),
-            joinedload(Recipe.ingredients).joinedload(RecipeIngredient.ingredient),
+            selectinload(Recipe.ingredients).joinedload(RecipeIngredient.ingredient),
         )
         .order_by(Recipe.updated_at.desc())
         .offset(offset)
@@ -91,7 +91,7 @@ def export_all_recipes(db: DbSession):
     """Export all recipes as a JSON array with underscore keys."""
     stmt = select(Recipe).options(
         joinedload(Recipe.target_profile),
-        joinedload(Recipe.ingredients).joinedload(RecipeIngredient.ingredient),
+        selectinload(Recipe.ingredients).joinedload(RecipeIngredient.ingredient),
     )
     recipes = list(db.scalars(stmt).unique().all())
     return [build_export_single(recipe) for recipe in recipes]
