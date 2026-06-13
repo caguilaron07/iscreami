@@ -166,7 +166,7 @@ def delete_ingredient(id: str) -> dict:
 
 
 @mcp.tool()
-def enrich_ingredient(ingredient_id: str) -> dict:
+def enrich_ingredient(id: str) -> dict:
     """Use AI to estimate missing composition/PAC/POD values and persist them.
 
     Only fills fields that are currently None — never overwrites non-None values.
@@ -174,9 +174,9 @@ def enrich_ingredient(ingredient_id: str) -> dict:
     Returns {"fields_updated": [...], "ingredient": {...}}.
     """
     try:
-        pk = uuid.UUID(ingredient_id)
+        pk = uuid.UUID(id)
     except ValueError:
-        return {"error": f"Invalid UUID: {ingredient_id}"}
+        return {"error": f"Invalid UUID: {id}"}
     with _db() as db:
         ing = db.get(
             Ingredient,
@@ -184,7 +184,7 @@ def enrich_ingredient(ingredient_id: str) -> dict:
             options=[joinedload(Ingredient.category), selectinload(Ingredient.aliases)],
         )
         if not ing:
-            return {"error": f"Ingredient {ingredient_id} not found"}
+            return {"error": f"Ingredient {id} not found"}
 
         try:
             estimates = ai.enrich_ingredient(ing)
