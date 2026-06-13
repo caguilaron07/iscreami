@@ -5,3 +5,6 @@
 
 ## 2026-06-13
 - Replaced joinedload with selectinload for Recipe.ingredients in list_recipes and export_all_recipes to avoid cartesian product on shared ingredients — opened PR #14
+
+## 2026-06-14
+- Fixed same joinedload→selectinload pattern in _load_recipe helper (affects get_recipe, export_single_recipe, create_recipe, update_recipe, import_recipes) — opened PR #19
