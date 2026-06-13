@@ -40,6 +40,29 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Security headers — defence in depth for all responses (API + SPA)
+CSP = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline'; "
+    "style-src 'self' 'unsafe-inline'; "
+    "img-src 'self' data:; "
+    "connect-src 'self'; "
+    "frame-ancestors 'none'; "
+    "form-action 'self'; "
+    "base-uri 'self'; "
+    "object-src 'none'"
+)
+
+
+@app.middleware("http")
+async def add_security_headers(request, call_next):
+    response = await call_next(request)
+    response.headers["Content-Security-Policy"] = CSP
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    return response
+
 # API routes under /api/v1
 api = FastAPI(title="iscreami API")
 api.include_router(ingredients.router)
