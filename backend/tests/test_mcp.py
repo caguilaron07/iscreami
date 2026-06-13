@@ -264,3 +264,53 @@ def test_enrich_ingredient_updates_fields():
     assert result["ingredient"]["name"] == "Milk"
     assert ing.water_pct == 88.0
     assert ing.sodium_mg == 44.0
+
+
+# --- Profile tools ---
+
+def test_list_profiles_returns_list():
+    from api.mcp_server import list_profiles
+
+    profile = MagicMock()
+    profile.id = uuid.uuid4()
+    profile.name = "Gelato"
+    mock_db = _mock_db()
+    mock_db.scalars.return_value.all.return_value = [profile]
+
+    with (
+        patch("api.mcp_server.SessionLocal", return_value=mock_db),
+        patch("api.mcp_server.TargetProfileOut.model_validate") as mv,
+    ):
+        mv.return_value.model_dump.return_value = {"id": str(profile.id), "name": "Gelato"}
+        result = list_profiles()
+
+    assert len(result) == 1
+    assert result[0]["name"] == "Gelato"
+
+
+def test_get_profile_not_found():
+    from api.mcp_server import get_profile
+
+    mock_db = _mock_db()
+    mock_db.get.return_value = None
+
+    with patch("api.mcp_server.SessionLocal", return_value=mock_db):
+        result = get_profile(_uuid_str())
+
+    assert "error" in result
+
+
+def test_delete_profile_nulls_recipe_references():
+    from api.mcp_server import delete_profile
+
+    prof = MagicMock()
+    prof.recipes = [MagicMock(target_profile_id=uuid.uuid4()), MagicMock(target_profile_id=uuid.uuid4())]
+    mock_db = _mock_db()
+    mock_db.get.return_value = prof
+
+    with patch("api.mcp_server.SessionLocal", return_value=mock_db):
+        result = delete_profile(_uuid_str())
+
+    for recipe in prof.recipes:
+        assert recipe.target_profile_id is None
+    assert "deleted" in result

@@ -16,12 +16,16 @@ from api.models import (
     IngredientCategory,
     Recipe,
     RecipeIngredient,
+    TargetProfile,
 )
 from api.schemas import (
     IngredientCreate,
     IngredientOut,
     IngredientUpdate,
     PaginatedIngredients,
+    TargetProfileCreate,
+    TargetProfileOut,
+    TargetProfileUpdate,
 )
 from api.services import ai
 
@@ -204,3 +208,74 @@ def enrich_ingredient(id: str) -> dict:
             "fields_updated": list(estimates.keys()),
             "ingredient": IngredientOut.model_validate(ing).model_dump(mode="json"),
         }
+
+
+@mcp.tool()
+def list_profiles() -> list[dict]:
+    """List all target profiles (Gelato, Ice Cream, Sorbet, etc.)."""
+    with _db() as db:
+        profiles = db.scalars(
+            select(TargetProfile).order_by(TargetProfile.name)
+        ).all()
+        return [TargetProfileOut.model_validate(p).model_dump(mode="json") for p in profiles]
+
+
+@mcp.tool()
+def get_profile(id: str) -> dict:
+    """Get a single target profile by UUID."""
+    try:
+        pk = uuid.UUID(id)
+    except ValueError:
+        return {"error": f"Invalid UUID: {id}"}
+    with _db() as db:
+        prof = db.get(TargetProfile, pk)
+        if not prof:
+            return {"error": f"Profile {id} not found"}
+        return TargetProfileOut.model_validate(prof).model_dump(mode="json")
+
+
+@mcp.tool()
+def create_profile(data: TargetProfileCreate) -> dict:
+    """Create a new target profile. All range fields are optional."""
+    with _db() as db:
+        prof = TargetProfile(**data.model_dump())
+        db.add(prof)
+        db.commit()
+        db.refresh(prof)
+        return TargetProfileOut.model_validate(prof).model_dump(mode="json")
+
+
+@mcp.tool()
+def update_profile(id: str, data: TargetProfileUpdate) -> dict:
+    """Update a target profile. Only provided fields are changed."""
+    try:
+        pk = uuid.UUID(id)
+    except ValueError:
+        return {"error": f"Invalid UUID: {id}"}
+    with _db() as db:
+        prof = db.get(TargetProfile, pk)
+        if not prof:
+            return {"error": f"Profile {id} not found"}
+        for key, value in data.model_dump(exclude_unset=True).items():
+            setattr(prof, key, value)
+        db.commit()
+        db.refresh(prof)
+        return TargetProfileOut.model_validate(prof).model_dump(mode="json")
+
+
+@mcp.tool()
+def delete_profile(id: str) -> dict:
+    """Delete a target profile. Nulls out target_profile_id on any recipes that reference it."""
+    try:
+        pk = uuid.UUID(id)
+    except ValueError:
+        return {"error": f"Invalid UUID: {id}"}
+    with _db() as db:
+        prof = db.get(TargetProfile, pk, options=[joinedload(TargetProfile.recipes)])
+        if not prof:
+            return {"error": f"Profile {id} not found"}
+        for recipe in prof.recipes:
+            recipe.target_profile_id = None
+        db.delete(prof)
+        db.commit()
+        return {"deleted": id}
