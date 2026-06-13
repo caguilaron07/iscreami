@@ -83,10 +83,14 @@ def list_ingredients(
 @mcp.tool()
 def get_ingredient(id: str) -> dict:
     """Get a single ingredient by UUID. Includes computed pac, pod, total_solids_pct."""
+    try:
+        pk = uuid.UUID(id)
+    except ValueError:
+        return {"error": f"Invalid UUID: {id}"}
     with _db() as db:
         ing = db.get(
             Ingredient,
-            uuid.UUID(id),
+            pk,
             options=[joinedload(Ingredient.category), selectinload(Ingredient.aliases)],
         )
         if not ing:
@@ -111,10 +115,14 @@ def create_ingredient(data: IngredientCreate) -> dict:
 @mcp.tool()
 def update_ingredient(id: str, data: IngredientUpdate) -> dict:
     """Update an existing ingredient. Only provided fields are changed."""
+    try:
+        pk = uuid.UUID(id)
+    except ValueError:
+        return {"error": f"Invalid UUID: {id}"}
     with _db() as db:
         ing = db.get(
             Ingredient,
-            uuid.UUID(id),
+            pk,
             options=[joinedload(Ingredient.category), selectinload(Ingredient.aliases)],
         )
         if not ing:
@@ -133,8 +141,12 @@ def update_ingredient(id: str, data: IngredientUpdate) -> dict:
 @mcp.tool()
 def delete_ingredient(id: str) -> dict:
     """Delete an ingredient. Returns error if referenced by any recipe."""
+    try:
+        pk = uuid.UUID(id)
+    except ValueError:
+        return {"error": f"Invalid UUID: {id}"}
     with _db() as db:
-        ing = db.get(Ingredient, uuid.UUID(id))
+        ing = db.get(Ingredient, pk)
         if not ing:
             return {"error": f"Ingredient {id} not found"}
         refs = db.scalars(
