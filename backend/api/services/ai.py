@@ -1,7 +1,10 @@
 """AI-powered ingredient enrichment using the Anthropic API."""
 from __future__ import annotations
 
+from typing import Any, cast
+
 import anthropic
+from anthropic.types import ToolParam
 
 from api.models import Ingredient
 from api.settings import settings
@@ -21,7 +24,7 @@ _ESTIMABLE_FIELDS = [
     "msnf_pct",
 ]
 
-_ENRICHMENT_TOOL: dict = {
+_ENRICHMENT_TOOL: ToolParam = {  # type: ignore[assignment]
     "name": "estimate_ingredient_composition",
     "description": (
         "Estimate missing nutritional composition values for an ice cream ingredient. "
@@ -66,7 +69,7 @@ _ENRICHMENT_TOOL: dict = {
 }
 
 
-def enrich_ingredient(ingredient: Ingredient) -> dict[str, float]:
+def enrich_ingredient(ingredient: Ingredient) -> dict[str, Any]:
     """Estimate None-valued composition fields via Anthropic API.
 
     Only fills fields that are currently None — never touches fields set to 0 or
@@ -122,7 +125,7 @@ def enrich_ingredient(ingredient: Ingredient) -> dict[str, float]:
         system=system,
         messages=[{"role": "user", "content": user_msg}],
         tools=[_ENRICHMENT_TOOL],
-        tool_choice={"type": "any"},
+        tool_choice=cast(Any, {"type": "any"}),
     )
 
     tool_block = next(

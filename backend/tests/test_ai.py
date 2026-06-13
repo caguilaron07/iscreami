@@ -90,6 +90,5 @@ def test_enrich_propagates_api_error(monkeypatch):
         message="rate limited", request=MagicMock(), body=None
     )
 
-    with patch("api.services.ai.anthropic.Anthropic", return_value=mock_client):
-        with pytest.raises(ant.APIError):
-            ai.enrich_ingredient(ing)
+    with patch("api.services.ai.anthropic.Anthropic", return_value=mock_client), pytest.raises(ant.APIError):
+        ai.enrich_ingredient(ing)
