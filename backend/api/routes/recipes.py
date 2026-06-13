@@ -37,7 +37,7 @@ def _load_recipe(db, recipe_id: uuid.UUID) -> Recipe:
         .where(Recipe.id == recipe_id)
         .options(
             joinedload(Recipe.target_profile),
-            joinedload(Recipe.ingredients).joinedload(RecipeIngredient.ingredient),
+            selectinload(Recipe.ingredients).joinedload(RecipeIngredient.ingredient),
         )
     )
     recipe = db.scalars(stmt).unique().first()
