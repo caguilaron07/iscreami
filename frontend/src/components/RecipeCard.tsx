@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { ArrowRight, Calendar, Download, Target, Trash2, Utensils, Weight } from "lucide-react";
@@ -14,6 +14,16 @@ export function RecipeCard({ recipe }: RecipeCardProps) {
   const queryClient = useQueryClient();
   const { addToast } = useToast();
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+
+  // Dismiss with Escape key
+  useEffect(() => {
+    if (!deleteConfirmOpen) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setDeleteConfirmOpen(false);
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [deleteConfirmOpen]);
 
   async function handleExport() {
     try {
@@ -114,7 +124,7 @@ export function RecipeCard({ recipe }: RecipeCardProps) {
       </div>
 
       {deleteConfirmOpen && (
-        <div className="modal modal-open">
+        <div className="modal modal-open" role="dialog" aria-modal="true" aria-label="Delete recipe">
           <div className="modal-box max-w-sm">
             <h3 className="font-bold text-lg mb-2">Delete Recipe</h3>
             <p className="text-base-content/70">
