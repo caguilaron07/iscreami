@@ -23,6 +23,10 @@ from api.schemas import (
     IngredientOut,
     IngredientUpdate,
     PaginatedIngredients,
+    PaginatedRecipes,
+    RecipeCreate,
+    RecipeOut,
+    RecipeUpdate,
     TargetProfileCreate,
     TargetProfileOut,
     TargetProfileUpdate,
@@ -277,5 +281,116 @@ def delete_profile(id: str) -> dict:
         for recipe in prof.recipes:
             recipe.target_profile_id = None
         db.delete(prof)
+        db.commit()
+        return {"deleted": id}
+
+
+def _load_recipe(db, recipe_id: uuid.UUID) -> Recipe | None:
+    """Load a recipe with all relationships eagerly loaded."""
+    stmt = (
+        select(Recipe)
+        .where(Recipe.id == recipe_id)
+        .options(
+            joinedload(Recipe.target_profile),
+            joinedload(Recipe.ingredients).joinedload(RecipeIngredient.ingredient),
+        )
+    )
+    return db.scalars(stmt).unique().first()
+
+
+@mcp.tool()
+def list_recipes(
+    search: str | None = None,
+    page: int = 1,
+    page_size: int = 50,
+) -> dict:
+    """List recipes with optional name search. Returns {total, items}."""
+    with _db() as db:
+        stmt = select(Recipe).options(
+            joinedload(Recipe.target_profile),
+            joinedload(Recipe.ingredients).joinedload(RecipeIngredient.ingredient),
+        )
+        if search:
+            stmt = stmt.where(Recipe.name.ilike(f"%{search}%"))
+        stmt = stmt.order_by(Recipe.updated_at.desc())
+
+        count_stmt = select(func.count()).select_from(stmt.subquery())
+        total = db.scalar(count_stmt) or 0
+        offset = (page - 1) * page_size
+        items = list(db.scalars(stmt.offset(offset).limit(page_size)).unique().all())
+        return PaginatedRecipes(total=total, items=items).model_dump(mode="json")  # type: ignore[arg-type]
+
+
+@mcp.tool()
+def get_recipe(id: str) -> dict:
+    """Get a recipe by UUID including all ingredients and their full details."""
+    try:
+        pk = uuid.UUID(id)
+    except ValueError:
+        return {"error": f"Invalid UUID: {id}"}
+    with _db() as db:
+        recipe = _load_recipe(db, pk)
+        if not recipe:
+            return {"error": f"Recipe {id} not found"}
+        return RecipeOut.model_validate(recipe).model_dump(mode="json")
+
+
+@mcp.tool()
+def create_recipe(data: RecipeCreate) -> dict:
+    """Create a new recipe. ingredients list is optional."""
+    with _db() as db:
+        recipe = Recipe(
+            name=data.name,
+            description=data.description,
+            recipe_type=data.recipe_type,
+            target_profile_id=data.target_profile_id,
+        )
+        db.add(recipe)
+        db.flush()
+        for inp in data.ingredients:
+            db.add(RecipeIngredient(
+                recipe_id=recipe.id,
+                ingredient_id=inp.ingredient_id,
+                weight_grams=inp.weight_grams,
+                sort_order=inp.sort_order,
+            ))
+        db.commit()
+        loaded = _load_recipe(db, recipe.id)
+        return RecipeOut.model_validate(loaded).model_dump(mode="json")
+
+
+@mcp.tool()
+def update_recipe(id: str, data: RecipeUpdate) -> dict:
+    """Update recipe metadata (name, description, recipe_type, target_profile_id).
+    To change ingredients use add/update/remove_recipe_ingredient tools."""
+    try:
+        pk = uuid.UUID(id)
+    except ValueError:
+        return {"error": f"Invalid UUID: {id}"}
+    with _db() as db:
+        recipe = _load_recipe(db, pk)
+        if not recipe:
+            return {"error": f"Recipe {id} not found"}
+        payload = data.model_dump(exclude_unset=True)
+        payload.pop("ingredients", None)
+        for field, value in payload.items():
+            setattr(recipe, field, value)
+        db.commit()
+        loaded = _load_recipe(db, recipe.id)
+        return RecipeOut.model_validate(loaded).model_dump(mode="json")
+
+
+@mcp.tool()
+def delete_recipe(id: str) -> dict:
+    """Delete a recipe and all its ingredient line items."""
+    try:
+        pk = uuid.UUID(id)
+    except ValueError:
+        return {"error": f"Invalid UUID: {id}"}
+    with _db() as db:
+        recipe = db.get(Recipe, pk)
+        if not recipe:
+            return {"error": f"Recipe {id} not found"}
+        db.delete(recipe)
         db.commit()
         return {"deleted": id}

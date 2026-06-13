@@ -314,3 +314,44 @@ def test_delete_profile_nulls_recipe_references():
     for recipe in prof.recipes:
         assert recipe.target_profile_id is None
     assert "deleted" in result
+
+
+# --- Recipe CRUD tools ---
+
+def test_list_recipes_returns_paginated():
+    from api.mcp_server import list_recipes
+
+    mock_db = _mock_db()
+    mock_db.scalar.return_value = 0
+    mock_db.scalars.return_value.unique.return_value.all.return_value = []
+
+    with patch("api.mcp_server.SessionLocal", return_value=mock_db):
+        result = list_recipes()
+
+    assert "total" in result
+    assert result["total"] == 0
+    assert result["items"] == []
+
+
+def test_get_recipe_not_found():
+    from api.mcp_server import get_recipe
+
+    mock_db = _mock_db()
+    mock_db.scalars.return_value.unique.return_value.first.return_value = None
+
+    with patch("api.mcp_server.SessionLocal", return_value=mock_db):
+        result = get_recipe(_uuid_str())
+
+    assert "error" in result
+
+
+def test_delete_recipe_not_found():
+    from api.mcp_server import delete_recipe
+
+    mock_db = _mock_db()
+    mock_db.get.return_value = None
+
+    with patch("api.mcp_server.SessionLocal", return_value=mock_db):
+        result = delete_recipe(_uuid_str())
+
+    assert "error" in result
