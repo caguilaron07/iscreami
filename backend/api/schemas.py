@@ -345,7 +345,3 @@ class HealthResponse(BaseModel):
     status: str
 
 
-class ImportErrorResponse(BaseModel):
-    """Import error response with list of validation errors."""
-
-    errors: list[str]
