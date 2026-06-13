@@ -4,6 +4,7 @@ from __future__ import annotations
 import uuid
 from contextlib import contextmanager
 
+import anthropic
 from mcp.server.fastmcp import FastMCP
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import joinedload, selectinload
@@ -22,6 +23,7 @@ from api.schemas import (
     IngredientUpdate,
     PaginatedIngredients,
 )
+from api.services import ai
 
 mcp = FastMCP("iscreami")
 
@@ -161,3 +163,44 @@ def delete_ingredient(id: str) -> dict:
         db.delete(ing)
         db.commit()
         return {"deleted": id}
+
+
+@mcp.tool()
+def enrich_ingredient(ingredient_id: str) -> dict:
+    """Use AI to estimate missing composition/PAC/POD values and persist them.
+
+    Only fills fields that are currently None — never overwrites non-None values.
+    Requires ANTHROPIC_API_KEY to be set in .env.
+    Returns {"fields_updated": [...], "ingredient": {...}}.
+    """
+    try:
+        pk = uuid.UUID(ingredient_id)
+    except ValueError:
+        return {"error": f"Invalid UUID: {ingredient_id}"}
+    with _db() as db:
+        ing = db.get(
+            Ingredient,
+            pk,
+            options=[joinedload(Ingredient.category), selectinload(Ingredient.aliases)],
+        )
+        if not ing:
+            return {"error": f"Ingredient {ingredient_id} not found"}
+
+        try:
+            estimates = ai.enrich_ingredient(ing)
+        except ValueError as exc:
+            return {"error": str(exc)}
+        except anthropic.APIError as exc:
+            return {"error": f"Anthropic API error: {exc}"}
+
+        for field, value in estimates.items():
+            setattr(ing, field, value)
+
+        if estimates:
+            db.commit()
+            db.refresh(ing, attribute_names=["category", "aliases"])
+
+        return {
+            "fields_updated": list(estimates.keys()),
+            "ingredient": IngredientOut.model_validate(ing).model_dump(mode="json"),
+        }

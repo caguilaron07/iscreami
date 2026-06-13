@@ -191,3 +191,69 @@ def test_delete_ingredient_success():
     assert result == {"deleted": ingredient_id}
     mock_db.delete.assert_called_once()
     mock_db.commit.assert_called_once()
+
+
+# --- enrich_ingredient ---
+
+def test_enrich_ingredient_not_found():
+    from api.mcp_server import enrich_ingredient
+
+    mock_db = _mock_db()
+    mock_db.get.return_value = None
+
+    with patch("api.mcp_server.SessionLocal", return_value=mock_db):
+        result = enrich_ingredient(_uuid_str())
+
+    assert "error" in result
+
+
+def test_enrich_ingredient_missing_api_key():
+    from api.mcp_server import enrich_ingredient
+
+    ing = MagicMock()
+    mock_db = _mock_db()
+    mock_db.get.return_value = ing
+
+    with patch("api.mcp_server.SessionLocal", return_value=mock_db):
+        with patch("api.mcp_server.ai.enrich_ingredient", side_effect=ValueError("ANTHROPIC_API_KEY is not configured")):
+            result = enrich_ingredient(_uuid_str())
+
+    assert "error" in result
+    assert "ANTHROPIC_API_KEY" in result["error"]
+
+
+def test_enrich_ingredient_api_error():
+    import anthropic as ant
+    from api.mcp_server import enrich_ingredient
+
+    ing = MagicMock()
+    mock_db = _mock_db()
+    mock_db.get.return_value = ing
+
+    with patch("api.mcp_server.SessionLocal", return_value=mock_db):
+        with patch(
+            "api.mcp_server.ai.enrich_ingredient",
+            side_effect=ant.APIError(message="rate limited", request=MagicMock(), body=None),
+        ):
+            result = enrich_ingredient(_uuid_str())
+
+    assert "error" in result
+
+
+def test_enrich_ingredient_updates_fields():
+    from api.mcp_server import enrich_ingredient
+
+    ing = MagicMock()
+    mock_db = _mock_db()
+    mock_db.get.return_value = ing
+
+    with patch("api.mcp_server.SessionLocal", return_value=mock_db):
+        with patch("api.mcp_server.ai.enrich_ingredient", return_value={"water_pct": 88.0, "sodium_mg": 44.0}):
+            with patch("api.mcp_server.IngredientOut.model_validate") as mock_validate:
+                mock_validate.return_value.model_dump.return_value = {"id": "abc", "name": "Milk"}
+                result = enrich_ingredient(_uuid_str())
+
+    assert result["fields_updated"] == ["water_pct", "sodium_mg"]
+    assert result["ingredient"]["name"] == "Milk"
+    assert ing.water_pct == 88.0
+    assert ing.sodium_mg == 44.0
