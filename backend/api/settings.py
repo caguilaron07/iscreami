@@ -21,6 +21,7 @@ class Settings(BaseSettings):
         default=66.0,
         description="Default serving size in grams",
     )
+    anthropic_api_key: str | None = None
 
 
 settings = Settings()
