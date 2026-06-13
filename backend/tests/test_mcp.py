@@ -91,15 +91,103 @@ def test_delete_ingredient_not_found():
 
 
 def test_delete_ingredient_referenced_by_recipe():
-    from sqlalchemy.exc import IntegrityError
     from api.mcp_server import delete_ingredient
 
+    mock_recipe = MagicMock()
+    mock_recipe.name = "Vanilla Bean"
     mock_db = _mock_db()
     mock_db.get.return_value = MagicMock()
-    mock_db.commit.side_effect = IntegrityError("", {}, Exception())
+    mock_db.scalars.return_value.all.return_value = [mock_recipe]
 
     with patch("api.mcp_server.SessionLocal", return_value=mock_db):
         result = delete_ingredient(_uuid_str())
 
     assert "error" in result
     assert "recipe" in result["error"].lower()
+    assert "Vanilla Bean" in result["error"]
+
+
+# --- get_ingredient (happy path) ---
+
+def test_get_ingredient_found():
+    from api.mcp_server import get_ingredient
+
+    ingredient_id = _uuid_str()
+    mock_db = _mock_db()
+    mock_db.get.return_value = MagicMock()
+
+    with patch("api.mcp_server.SessionLocal", return_value=mock_db), \
+         patch("api.mcp_server.IngredientOut") as mock_out:
+        mock_out.model_validate.return_value.model_dump.return_value = {"id": ingredient_id, "name": "Milk"}
+        result = get_ingredient(ingredient_id)
+
+    assert result["name"] == "Milk"
+
+
+# --- create_ingredient ---
+
+def test_create_ingredient_returns_out():
+    from api.mcp_server import create_ingredient
+    from api.schemas import IngredientCreate
+
+    data = IngredientCreate(name="Test Milk")
+    mock_db = _mock_db()
+
+    with patch("api.mcp_server.SessionLocal", return_value=mock_db), \
+         patch("api.mcp_server.IngredientOut") as mock_out:
+        mock_out.model_validate.return_value.model_dump.return_value = {"id": _uuid_str(), "name": "Test Milk"}
+        result = create_ingredient(data)
+
+    assert result["name"] == "Test Milk"
+    mock_db.add.assert_called_once()
+    mock_db.commit.assert_called_once()
+
+
+# --- update_ingredient ---
+
+def test_update_ingredient_not_found():
+    from api.mcp_server import update_ingredient
+    from api.schemas import IngredientUpdate
+
+    mock_db = _mock_db()
+    mock_db.get.return_value = None
+
+    with patch("api.mcp_server.SessionLocal", return_value=mock_db):
+        result = update_ingredient(_uuid_str(), IngredientUpdate())
+
+    assert "error" in result
+
+
+def test_update_ingredient_found():
+    from api.mcp_server import update_ingredient
+    from api.schemas import IngredientUpdate
+
+    ingredient_id = _uuid_str()
+    mock_db = _mock_db()
+    mock_db.get.return_value = MagicMock()
+
+    with patch("api.mcp_server.SessionLocal", return_value=mock_db), \
+         patch("api.mcp_server.IngredientOut") as mock_out:
+        mock_out.model_validate.return_value.model_dump.return_value = {"id": ingredient_id, "name": "Updated"}
+        result = update_ingredient(ingredient_id, IngredientUpdate(name="Updated"))
+
+    assert result["name"] == "Updated"
+    mock_db.commit.assert_called_once()
+
+
+# --- delete_ingredient (happy path) ---
+
+def test_delete_ingredient_success():
+    from api.mcp_server import delete_ingredient
+
+    ingredient_id = _uuid_str()
+    mock_db = _mock_db()
+    mock_db.get.return_value = MagicMock()
+    mock_db.scalars.return_value.all.return_value = []  # no referencing recipes
+
+    with patch("api.mcp_server.SessionLocal", return_value=mock_db):
+        result = delete_ingredient(ingredient_id)
+
+    assert result == {"deleted": ingredient_id}
+    mock_db.delete.assert_called_once()
+    mock_db.commit.assert_called_once()

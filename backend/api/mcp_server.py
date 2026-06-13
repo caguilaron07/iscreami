@@ -6,11 +6,16 @@ from contextlib import contextmanager
 
 from mcp.server.fastmcp import FastMCP
 from sqlalchemy import func, or_, select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload, selectinload
 
 from api.db import SessionLocal
-from api.models import Ingredient, IngredientAlias, IngredientCategory
+from api.models import (
+    Ingredient,
+    IngredientAlias,
+    IngredientCategory,
+    Recipe,
+    RecipeIngredient,
+)
 from api.schemas import (
     IngredientCreate,
     IngredientOut,
@@ -76,16 +81,16 @@ def list_ingredients(
 
 
 @mcp.tool()
-def get_ingredient(ingredient_id: str) -> dict:
+def get_ingredient(id: str) -> dict:
     """Get a single ingredient by UUID. Includes computed pac, pod, total_solids_pct."""
     with _db() as db:
         ing = db.get(
             Ingredient,
-            uuid.UUID(ingredient_id),
+            uuid.UUID(id),
             options=[joinedload(Ingredient.category), selectinload(Ingredient.aliases)],
         )
         if not ing:
-            return {"error": f"Ingredient {ingredient_id} not found"}
+            return {"error": f"Ingredient {id} not found"}
         return IngredientOut.model_validate(ing).model_dump(mode="json")
 
 
@@ -104,16 +109,16 @@ def create_ingredient(data: IngredientCreate) -> dict:
 
 
 @mcp.tool()
-def update_ingredient(ingredient_id: str, data: IngredientUpdate) -> dict:
+def update_ingredient(id: str, data: IngredientUpdate) -> dict:
     """Update an existing ingredient. Only provided fields are changed."""
     with _db() as db:
         ing = db.get(
             Ingredient,
-            uuid.UUID(ingredient_id),
+            uuid.UUID(id),
             options=[joinedload(Ingredient.category), selectinload(Ingredient.aliases)],
         )
         if not ing:
-            return {"error": f"Ingredient {ingredient_id} not found"}
+            return {"error": f"Ingredient {id} not found"}
         payload = data.model_dump(exclude_unset=True)
         alias_names: list[str] | None = payload.pop("aliases", None)
         for key, value in payload.items():
@@ -126,16 +131,21 @@ def update_ingredient(ingredient_id: str, data: IngredientUpdate) -> dict:
 
 
 @mcp.tool()
-def delete_ingredient(ingredient_id: str) -> dict:
+def delete_ingredient(id: str) -> dict:
     """Delete an ingredient. Returns error if referenced by any recipe."""
     with _db() as db:
-        ing = db.get(Ingredient, uuid.UUID(ingredient_id))
+        ing = db.get(Ingredient, uuid.UUID(id))
         if not ing:
-            return {"error": f"Ingredient {ingredient_id} not found"}
+            return {"error": f"Ingredient {id} not found"}
+        refs = db.scalars(
+            select(Recipe)
+            .join(RecipeIngredient, RecipeIngredient.recipe_id == Recipe.id)
+            .where(RecipeIngredient.ingredient_id == ing.id)
+            .distinct()
+        ).all()
+        if refs:
+            names = ", ".join(f'"{r.name}"' for r in refs)
+            return {"error": f"Ingredient is used in recipe(s): {names} and cannot be deleted"}
         db.delete(ing)
-        try:
-            db.commit()
-        except IntegrityError:
-            db.rollback()
-            return {"error": "Ingredient is used in one or more recipes and cannot be deleted"}
-        return {"deleted": ingredient_id}
+        db.commit()
+        return {"deleted": id}
