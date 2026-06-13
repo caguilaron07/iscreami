@@ -355,3 +355,61 @@ def test_delete_recipe_not_found():
         result = delete_recipe(_uuid_str())
 
     assert "error" in result
+
+
+# --- Recipe ingredient line item tools ---
+
+def test_add_recipe_ingredient_recipe_not_found():
+    from api.mcp_server import add_recipe_ingredient
+
+    mock_db = _mock_db()
+    mock_db.scalars.return_value.unique.return_value.first.return_value = None
+
+    with patch("api.mcp_server.SessionLocal", return_value=mock_db):
+        result = add_recipe_ingredient(_uuid_str(), _uuid_str(), 100.0)
+
+    assert "error" in result
+
+
+def test_add_recipe_ingredient_duplicate_returns_conflict():
+    from sqlalchemy.exc import IntegrityError
+
+    from api.mcp_server import add_recipe_ingredient
+
+    recipe = MagicMock()
+    recipe.ingredients = []
+    mock_db = _mock_db()
+    mock_db.scalars.return_value.unique.return_value.first.return_value = recipe
+    mock_db.flush.side_effect = IntegrityError("", {}, Exception())
+
+    with patch("api.mcp_server.SessionLocal", return_value=mock_db):
+        result = add_recipe_ingredient(_uuid_str(), _uuid_str(), 100.0)
+
+    assert "error" in result
+    assert "already" in result["error"].lower()
+
+
+def test_update_recipe_ingredient_wrong_recipe():
+    from api.mcp_server import update_recipe_ingredient
+
+    item = MagicMock()
+    item.recipe_id = uuid.uuid4()  # different from what we'll pass
+    mock_db = _mock_db()
+    mock_db.get.return_value = item
+
+    with patch("api.mcp_server.SessionLocal", return_value=mock_db):
+        result = update_recipe_ingredient(_uuid_str(), 99, 150.0)
+
+    assert "error" in result
+
+
+def test_remove_recipe_ingredient_not_found():
+    from api.mcp_server import remove_recipe_ingredient
+
+    mock_db = _mock_db()
+    mock_db.get.return_value = None
+
+    with patch("api.mcp_server.SessionLocal", return_value=mock_db):
+        result = remove_recipe_ingredient(_uuid_str(), 99)
+
+    assert "error" in result

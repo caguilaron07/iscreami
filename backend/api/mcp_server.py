@@ -7,6 +7,7 @@ from contextlib import contextmanager
 import anthropic
 from mcp.server.fastmcp import FastMCP
 from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload, selectinload
 
 from api.db import SessionLocal
@@ -394,3 +395,80 @@ def delete_recipe(id: str) -> dict:
         db.delete(recipe)
         db.commit()
         return {"deleted": id}
+
+
+@mcp.tool()
+def add_recipe_ingredient(recipe_id: str, ingredient_id: str, weight_grams: float) -> dict:
+    """Add an ingredient to a recipe.
+
+    Each ingredient can appear at most once per recipe (DB constraint).
+    Returns an error if the ingredient is already in the recipe.
+    """
+    try:
+        r_pk = uuid.UUID(recipe_id)
+        i_pk = uuid.UUID(ingredient_id)
+    except ValueError as exc:
+        return {"error": f"Invalid UUID: {exc}"}
+    with _db() as db:
+        recipe = _load_recipe(db, r_pk)
+        if not recipe:
+            return {"error": f"Recipe {recipe_id} not found"}
+
+        sort_order = len(recipe.ingredients)
+        db.add(RecipeIngredient(
+            recipe_id=recipe.id,
+            ingredient_id=i_pk,
+            weight_grams=weight_grams,
+            sort_order=sort_order,
+        ))
+        try:
+            db.flush()
+        except IntegrityError:
+            db.rollback()
+            return {"error": "Ingredient is already in this recipe"}
+
+        db.commit()
+        loaded = _load_recipe(db, recipe.id)
+        return RecipeOut.model_validate(loaded).model_dump(mode="json")
+
+
+@mcp.tool()
+def update_recipe_ingredient(recipe_id: str, item_id: int, weight_grams: float) -> dict:
+    """Update the weight of a recipe ingredient line item.
+
+    item_id is the integer id from RecipeIngredientOut.id.
+    Returns an error if item_id does not belong to the given recipe.
+    """
+    try:
+        rid = uuid.UUID(recipe_id)
+    except ValueError:
+        return {"error": f"Invalid UUID: {recipe_id}"}
+    with _db() as db:
+        item = db.get(RecipeIngredient, item_id)
+        if not item or item.recipe_id != rid:
+            return {"error": f"Recipe ingredient {item_id} not found in recipe {recipe_id}"}
+        item.weight_grams = weight_grams
+        db.commit()
+        loaded = _load_recipe(db, rid)
+        return RecipeOut.model_validate(loaded).model_dump(mode="json")
+
+
+@mcp.tool()
+def remove_recipe_ingredient(recipe_id: str, item_id: int) -> dict:
+    """Remove an ingredient line item from a recipe.
+
+    item_id is the integer id from RecipeIngredientOut.id.
+    Returns an error if item_id does not belong to the given recipe.
+    """
+    try:
+        rid = uuid.UUID(recipe_id)
+    except ValueError:
+        return {"error": f"Invalid UUID: {recipe_id}"}
+    with _db() as db:
+        item = db.get(RecipeIngredient, item_id)
+        if not item or item.recipe_id != rid:
+            return {"error": f"Recipe ingredient {item_id} not found in recipe {recipe_id}"}
+        db.delete(item)
+        db.commit()
+        loaded = _load_recipe(db, rid)
+        return RecipeOut.model_validate(loaded).model_dump(mode="json")
