@@ -33,6 +33,7 @@ from api.schemas import (
     TargetProfileUpdate,
 )
 from api.services import ai
+from api.services.calculator import calculate
 
 mcp = FastMCP("iscreami")
 
@@ -472,3 +473,33 @@ def remove_recipe_ingredient(recipe_id: str, item_id: int) -> dict:
         db.commit()
         loaded = _load_recipe(db, rid)
         return RecipeOut.model_validate(loaded).model_dump(mode="json")
+
+
+@mcp.tool()
+def calculate_recipe(recipe_id: str, serving_size_g: float = 66.0) -> dict:
+    """Calculate all metrics for a saved recipe.
+
+    Returns composition, pac (mix + water), freezing curve, sweetness (POD),
+    nutrition per_100g and per_serving, and target_comparison (null if no profile set).
+    target_comparison status is a 3-value enum: 'in_range', 'below', or 'above'.
+
+    serving_size_g defaults to 66.0g (configurable per-call).
+    """
+    try:
+        pk = uuid.UUID(recipe_id)
+    except ValueError:
+        return {"error": f"Invalid UUID: {recipe_id}"}
+    with _db() as db:
+        recipe = _load_recipe(db, pk)
+        if not recipe:
+            return {"error": f"Recipe {recipe_id} not found"}
+        if not recipe.ingredients:
+            return {"error": "Recipe has no ingredients — add at least one before calculating"}
+
+        items = [(ri.ingredient, float(ri.weight_grams)) for ri in recipe.ingredients]
+        result = calculate(
+            items=items,
+            target_profile=recipe.target_profile,
+            serving_size_g=serving_size_g,
+        )
+        return result.model_dump(mode="json")

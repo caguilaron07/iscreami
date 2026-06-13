@@ -4,6 +4,8 @@ from __future__ import annotations
 import uuid
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 
 def _mock_db():
     """Return a mock that acts as the SQLAlchemy session."""
@@ -413,3 +415,124 @@ def test_remove_recipe_ingredient_not_found():
         result = remove_recipe_ingredient(_uuid_str(), 99)
 
     assert "error" in result
+
+
+# --- calculate_recipe ---
+
+def test_calculate_recipe_not_found():
+    from api.mcp_server import calculate_recipe
+
+    mock_db = _mock_db()
+    mock_db.scalars.return_value.unique.return_value.first.return_value = None
+
+    with patch("api.mcp_server.SessionLocal", return_value=mock_db):
+        result = calculate_recipe(_uuid_str())
+
+    assert "error" in result
+
+
+def test_calculate_recipe_empty_returns_error():
+    from api.mcp_server import calculate_recipe
+
+    recipe = MagicMock()
+    recipe.ingredients = []
+    mock_db = _mock_db()
+    mock_db.scalars.return_value.unique.return_value.first.return_value = recipe
+
+    with patch("api.mcp_server.SessionLocal", return_value=mock_db):
+        result = calculate_recipe(_uuid_str())
+
+    assert "error" in result
+    assert "ingredient" in result["error"].lower()
+
+
+def test_calculate_recipe_no_profile_returns_null_comparison():
+    from api.mcp_server import calculate_recipe
+    from api.schemas import CalculateResponse
+
+    ri = MagicMock()
+    ri.ingredient = MagicMock()
+    ri.weight_grams = 100.0
+    recipe = MagicMock()
+    recipe.ingredients = [ri]
+    recipe.target_profile = None
+
+    mock_calc_result = MagicMock(spec=CalculateResponse)
+    mock_calc_result.model_dump.return_value = {"target_comparison": None, "pac": {}}
+
+    mock_db = _mock_db()
+    mock_db.scalars.return_value.unique.return_value.first.return_value = recipe
+
+    with (
+        patch("api.mcp_server.SessionLocal", return_value=mock_db),
+        patch("api.mcp_server.calculate", return_value=mock_calc_result),
+    ):
+        result = calculate_recipe(_uuid_str())
+
+    assert result["target_comparison"] is None
+
+
+# --- Integration tests (real SQLite DB) ---
+
+
+@pytest.mark.integration
+def test_integration_list_categories_and_create_ingredient(test_db):
+    from api.mcp_server import create_ingredient, list_ingredient_categories
+    from api.models import IngredientCategory
+    from api.schemas import IngredientCreate
+
+    cat = IngredientCategory(name="Dairy", slug="dairy")
+    test_db.add(cat)
+    test_db.commit()
+
+    with patch("api.mcp_server.SessionLocal", return_value=test_db):
+        categories = list_ingredient_categories()
+        assert any(c["slug"] == "dairy" for c in categories)
+
+        data = IngredientCreate(
+            name="Whole Milk",
+            category_id=cat.id,
+            water_pct=87.5,
+            total_fat_pct=3.5,
+            total_sugar_pct=4.7,
+            sodium_mg=44.0,
+        )
+        result = create_ingredient(data)
+        assert result["name"] == "Whole Milk"
+        assert result["category"]["slug"] == "dairy"
+
+
+@pytest.mark.integration
+def test_integration_create_and_calculate_recipe(test_db):
+    from api.mcp_server import calculate_recipe, create_recipe
+    from api.models import Ingredient, IngredientCategory
+    from api.schemas import RecipeCreate, RecipeIngredientInput
+
+    cat = IngredientCategory(name="Dairy", slug="dairy")
+    test_db.add(cat)
+    test_db.flush()
+
+    milk = Ingredient(
+        name="Whole Milk",
+        category_id=cat.id,
+        water_pct=87.5,
+        total_fat_pct=3.5,
+        total_sugar_pct=4.7,
+        sodium_mg=44.0,
+    )
+    test_db.add(milk)
+    test_db.commit()
+
+    with patch("api.mcp_server.SessionLocal", return_value=test_db):
+        recipe_data = RecipeCreate(
+            name="Simple Milk Base",
+            ingredients=[RecipeIngredientInput(ingredient_id=milk.id, weight_grams=1000.0)],
+        )
+        recipe = create_recipe(recipe_data)
+        recipe_id = recipe["id"]
+
+        result = calculate_recipe(recipe_id)
+        assert "pac" in result
+        assert "freezing" in result
+        assert "sweetness" in result
+        assert result["target_comparison"] is None
