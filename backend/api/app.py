@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.types import Receive, Scope, Send
 
+from api.mcp_server import mcp
 from api.routes import calculate, ingredients, profiles, recipes
 from api.settings import settings
 
@@ -118,6 +119,7 @@ def health():
 
 
 app.mount("/api/v1", api)
+app.mount("/mcp", mcp.streamable_http_app())
 
 # Serve frontend static files if the build exists
 if FRONTEND_DIR.is_dir():
