@@ -27,13 +27,13 @@ _CACHE_CONTROL = b"cache-control"
 
 
 def _with_cache(app: Callable, cache_value: bytes) -> Callable:
-    """Wrap an ASGI callable to inject a Cache-Control header on 2xx/3xx."""
+    """Wrap an ASGI callable to inject a Cache-Control header on 2xx."""
 
     async def _wrapped(scope: Scope, receive: Receive, send: Send) -> None:
         async def send_with_cache(message):
             if message.get("type") == "http.response.start":
                 status = message.get("status", 0)
-                if 200 <= status < 400:
+                if 200 <= status < 300:
                     headers = list(message.get("headers", []))
                     if not any(k == _CACHE_CONTROL for k, _ in headers):
                         headers.append((_CACHE_CONTROL, cache_value))
