@@ -161,14 +161,21 @@ def delete_recipe(recipe_id: uuid.UUID, db: DbSession):
 @router.post(
     "/import",
     status_code=201,
-    responses={400: {"description": "Invalid JSON or validation error"}},
+    responses={
+        400: {"description": "Invalid JSON or validation error"},
+        413: {"description": "File too large"},
+    },
 )
 async def import_recipes(
     file: Annotated[UploadFile, File(...)],
     db: DbSession,
 ) -> list[RecipeOut]:
     """Import recipes from a JSON file (object or array)."""
-    if file.size is not None and file.size > _MAX_IMPORT_SIZE:
+    if file.size is None:
+        raise HTTPException(
+            400, "File size could not be determined — send with Content-Length header"
+        )
+    if file.size > _MAX_IMPORT_SIZE:
         raise HTTPException(413, "File too large — maximum upload size is 5 MB")
     try:
         content = await file.read()

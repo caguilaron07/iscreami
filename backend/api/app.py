@@ -63,6 +63,7 @@ async def add_security_headers(request, call_next):
     response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
     return response
 
+
 # API routes under /api/v1
 api = FastAPI(title="iscreami API")
 api.include_router(ingredients.router)
