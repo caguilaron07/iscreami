@@ -51,6 +51,26 @@ export function CalculatorView() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [newRecipeName, setNewRecipeName] = useState("");
 
+  // Dismiss save dialog with Escape key
+  useEffect(() => {
+    if (!saveDialogOpen) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setSaveDialogOpen(false);
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [saveDialogOpen]);
+
+  // Dismiss delete confirmation with Escape key
+  useEffect(() => {
+    if (!deleteConfirmOpen) return;
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setDeleteConfirmOpen(false);
+    }
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [deleteConfirmOpen]);
+
   // Load recipe from URL params
   useEffect(() => {
     if (urlRecipe && profiles) {
@@ -264,7 +284,7 @@ export function CalculatorView() {
 
       {/* Save-as-new dialog */}
       {saveDialogOpen && (
-        <div className="modal modal-open">
+        <div className="modal modal-open" role="dialog" aria-modal="true" aria-label="Save recipe">
           <div className="modal-box max-w-sm">
             <h3 className="font-bold text-lg mb-4">Save Recipe</h3>
             <label className="label" htmlFor="recipe-name-input">
@@ -302,9 +322,6 @@ export function CalculatorView() {
             type="button"
             className="modal-backdrop"
             onClick={() => setSaveDialogOpen(false)}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") setSaveDialogOpen(false);
-            }}
             aria-label="Close save dialog"
           />
         </div>
@@ -312,7 +329,7 @@ export function CalculatorView() {
 
       {/* Delete confirmation modal */}
       {deleteConfirmOpen && (
-        <div className="modal modal-open">
+        <div className="modal modal-open" role="dialog" aria-modal="true" aria-label="Delete recipe">
           <div className="modal-box max-w-sm">
             <h3 className="font-bold text-lg mb-2">Delete Recipe</h3>
             <p className="text-base-content/70">
@@ -340,9 +357,6 @@ export function CalculatorView() {
             type="button"
             className="modal-backdrop"
             onClick={() => setDeleteConfirmOpen(false)}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") setDeleteConfirmOpen(false);
-            }}
             aria-label="Close delete dialog"
           />
         </div>
