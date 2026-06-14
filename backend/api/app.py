@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -9,11 +10,46 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.types import Receive, Scope, Send
 
 from api.routes import calculate, ingredients, profiles, recipes
 from api.settings import settings
 
 FRONTEND_DIR = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
+
+# Vite builds content-hashed filenames into /assets/ (e.g. index-Bq5G7i4F.js).
+# These are immutable — the hash changes when content changes, so cache forever.
+_IMMUTABLE_CACHE = b"public, max-age=31536000, immutable"
+# index.html must always be revalidated so fresh SPA references roll out.
+_SPA_CACHE = b"no-cache"
+
+_CACHE_CONTROL = b"cache-control"
+
+
+def _with_cache(app: Callable, cache_value: bytes) -> Callable:
+    """Wrap an ASGI callable to inject a Cache-Control header on 2xx."""
+
+    async def _wrapped(scope: Scope, receive: Receive, send: Send) -> None:
+        async def send_with_cache(message):
+            if message.get("type") == "http.response.start":
+                status = message.get("status", 0)
+                if 200 <= status < 300:
+                    headers = list(message.get("headers", []))
+                    if not any(k == _CACHE_CONTROL for k, _ in headers):
+                        headers.append((_CACHE_CONTROL, cache_value))
+                    message["headers"] = headers
+            await send(message)
+
+        await app(scope, receive, send_with_cache)
+
+    return _wrapped
+
+
+class _ImmutableStaticFiles(StaticFiles):
+    """StaticFiles serving hashed Vite assets with immutable cache headers."""
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        await _with_cache(super().__call__, _IMMUTABLE_CACHE)(scope, receive, send)
 
 
 @asynccontextmanager
@@ -85,7 +121,11 @@ app.mount("/api/v1", api)
 
 # Serve frontend static files if the build exists
 if FRONTEND_DIR.is_dir():
-    app.mount("/assets", StaticFiles(directory=FRONTEND_DIR / "assets"), name="assets")
+    app.mount(
+        "/assets",
+        _ImmutableStaticFiles(directory=FRONTEND_DIR / "assets"),
+        name="assets",
+    )
 
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
@@ -93,4 +133,7 @@ if FRONTEND_DIR.is_dir():
         resolved = (FRONTEND_DIR / full_path).resolve()
         if resolved.is_relative_to(FRONTEND_DIR) and resolved.is_file():
             return FileResponse(resolved)
-        return FileResponse(FRONTEND_DIR / "index.html")
+        return FileResponse(
+            FRONTEND_DIR / "index.html",
+            headers={"Cache-Control": "no-cache"},
+        )

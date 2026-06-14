@@ -8,3 +8,6 @@
 
 ## 2026-06-14
 - Fixed same joinedload→selectinload pattern in _load_recipe helper (affects get_recipe, export_single_recipe, create_recipe, update_recipe, import_recipes) — opened PR #19
+
+## 2026-06-15
+- Added Cache-Control headers to Vite-built static assets — immutable (1yr) for /assets/*, no-cache for index.html — opened PR #23
