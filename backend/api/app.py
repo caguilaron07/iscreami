@@ -55,7 +55,8 @@ class _ImmutableStaticFiles(StaticFiles):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    yield
+    async with mcp.session_manager.run():
+        yield
 
 
 app = FastAPI(
