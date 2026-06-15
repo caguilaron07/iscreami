@@ -6,6 +6,7 @@ from contextlib import contextmanager
 
 import anthropic
 from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp.server import TransportSecuritySettings
 from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import joinedload, selectinload
@@ -35,7 +36,13 @@ from api.schemas import (
 from api.services import ai
 from api.services.calculator import calculate
 
-mcp = FastMCP("iscreami")
+mcp = FastMCP(
+    "iscreami",
+    transport_security=TransportSecuritySettings(
+        allowed_hosts=["iscreami.vercel.app", "localhost", "localhost:8000", "127.0.0.1", "127.0.0.1:8000"],
+        allowed_origins=["https://iscreami.vercel.app"],
+    ),
+)
 
 
 @contextmanager
