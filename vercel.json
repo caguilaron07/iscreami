@@ -1,0 +1,19 @@
+{
+  "buildCommand": "cd frontend && pnpm install --frozen-lockfile && pnpm build",
+  "outputDirectory": "frontend/dist",
+  "framework": null,
+  "functions": {
+    "api/index.py": {
+      "runtime": "python3.12",
+      "memory": 1024,
+      "maxDuration": 60,
+      "includeFiles": "backend/**"
+    }
+  },
+  "routes": [
+    { "src": "/api/v1/(.*)", "dest": "/api/index" },
+    { "src": "/mcp(.*)", "dest": "/api/index" },
+    { "handle": "filesystem" },
+    { "src": "/(.*)", "dest": "/index.html" }
+  ]
+}
